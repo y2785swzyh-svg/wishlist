@@ -255,7 +255,7 @@ function processFrame() {
   stats.faces = dets ? dets.length : 0;
   if (++stats.frames % 5 === 0 && hud.style.display === 'block') {
     hud.textContent =
-      `Risoluzione ${fw}x${fh}\nFluidità ${stats.fps.toFixed(1)} fotogrammi/s\n` +
+      `Versione 4 – risoluzione ${fw}x${fh}\nFluidità ${stats.fps.toFixed(1)} fotogrammi/s\n` +
       `Rilevamento ${stats.detect.toFixed(0)} ms\nVolti ${stats.faces}, errori ${stats.errors}\n` +
       `Giroscopio ${hasGyro ? rot.toFixed(0) + ' gradi/s' : 'non disponibile'}\n` +
       `Protezione movimento: ${moving ? 'ATTIVA' : 'no'} (${stats.full} coperti)\n` +
