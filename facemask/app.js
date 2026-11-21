@@ -19,8 +19,12 @@ const FULL = 20;              // idem per la copertura dell'intero fotogramma
 const MOTION_DEG = 57;        // gradi al secondo oltre i quali si copre tutto
 const MOTION_HOLD_MS = 350;
 const MAX_SIDE = 1280;
-const TILE_FRACTION = 2 / 3;   // lato dei riquadri di analisi, rispetto al lato corto
-const TILE_STRIDE = 0.6;      // passo tra riquadri, in frazione del lato (sovrapposizione 40%)
+// Riquadri di analisi: [lato rispetto al lato corto, passo in frazione del lato, livello]
+const LEVELS = [[1, 0.6, 0], [0.5, 0.6, 1], [0.28, 0.75, 2]];
+const SCORE_MIN = 0.6;        // sotto questa confidenza un rilevamento è scartato
+const BUDGET_MS = 40;         // tempo massimo di analisi per fotogramma
+const MIN_ROTATE = 2;         // riquadri a rotazione analizzati comunque a ogni fotogramma
+const MAX_ACTIVE = 8;         // riquadri con un volto, riesaminati a ogni fotogramma
 
 const $ = (id) => document.getElementById(id);
 const video = $('cam'), view = $('view'), vctx = view.getContext('2d');
@@ -43,7 +47,7 @@ function iou(a, b) {
 }
 
 // ---------- tracciamento: "nel dubbio, la maschera resta" ----------
-let tracks = [];
+let tracks = [], holdMs = HOLD_MS;
 function trackerUpdate(dets, now, fw, fh) {
   const unmatched = tracks.slice(), next = [];
   for (const d of dets) {
@@ -52,7 +56,7 @@ function trackerUpdate(dets, now, fw, fh) {
     if (best && bestIou >= MATCH_IOU) unmatched.splice(unmatched.indexOf(best), 1);
     next.push({ box: d, seen: now });
   }
-  for (const t of unmatched) if (now - t.seen <= HOLD_MS) next.push(t);
+  for (const t of unmatched) if (now - t.seen <= holdMs) next.push(t);
   tracks = next;
   const out = [];
   for (const t of tracks) {
@@ -118,42 +122,64 @@ function maskAll(canvas, ctx) {
 }
 
 // ---------- rilevamento a più scale ----------
-// Il modello riconosce solo volti grandi rispetto all'immagine che riceve. Per
-// trovare anche quelli lontani, oltre al fotogramma intero si analizzano dei
-// riquadri sovrapposti, ciascuno ingrandito: un volto piccolo nel fotogramma
-// diventa grande nel suo riquadro.
+// Il modello riconosce un volto solo se occupa almeno il 15% circa dell'immagine
+// che riceve. Il fotogramma viene quindi diviso in riquadri quadrati di tre
+// grandezze: quelli grandi trovano i volti vicini, quelli piccoli i volti lontani.
+// Analizzarli tutti a ogni fotogramma sarebbe troppo lento, perciò:
+//  - i riquadri grandi e quelli dove c'era un volto sono analizzati sempre;
+//  - gli altri a rotazione, finché c'è tempo nel fotogramma corrente.
 const cDet = mk(256, 256), xDet = x(cDet);
-function positions(len, side) {
+let tiles = [], tilesKey = '', cursor = 0, frameNo = 0, cycleStart = 0, cycleMs = 0;
+function positions(len, side, stride) {
   if (len <= side) return [0];
-  const n = Math.ceil((len - side) / (side * TILE_STRIDE)) + 1;
+  const n = Math.ceil((len - side) / (side * stride)) + 1;
   return Array.from({ length: n }, (_, i) => Math.round((len - side) * i / (n - 1)));
 }
-function detectRegion(canvas, rx, ry, rw, rh, out) {
-  xDet.drawImage(canvas, rx, ry, rw, rh, 0, 0, 256, 256);
+function buildTiles(fw, fh) {
+  const short = Math.min(fw, fh), list = [];
+  for (const [frac, stride, level] of LEVELS) {
+    const side = Math.round(short * frac);
+    for (const ty of positions(fh, side, stride)) for (const tx of positions(fw, side, stride)) {
+      list.push({ x: tx, y: ty, side, level, hit: false, frame: -1 });
+    }
+  }
+  return list;
+}
+function scanTile(canvas, t, out) {
+  t.frame = frameNo; t.hit = false;
+  xDet.drawImage(canvas, t.x, t.y, t.side, t.side, 0, 0, 256, 256);
   for (const d of detector.detect(cDet).detections) {
-    const b = d.boundingBox;
-    if (!b) continue;
-    out.push({
-      l: rx + b.originX * rw / 256, t: ry + b.originY * rh / 256,
-      r: rx + (b.originX + b.width) * rw / 256, b: ry + (b.originY + b.height) * rh / 256,
-    });
+    const b = d.boundingBox, score = d.categories && d.categories[0] ? d.categories[0].score : 0;
+    if (!b || score < SCORE_MIN) continue;
+    const k = t.side / 256;
+    out.push({ l: t.x + b.originX * k, t: t.y + b.originY * k,
+      r: t.x + (b.originX + b.width) * k, b: t.y + (b.originY + b.height) * k });
+    t.hit = true;
   }
 }
 function detectAll(canvas, fw, fh) {
-  const raw = [];
-  detectRegion(canvas, 0, 0, fw, fh, raw);
-  const side = Math.round(Math.min(fw, fh) * TILE_FRACTION);
-  for (const ty of positions(fh, side)) for (const tx of positions(fw, side)) {
-    detectRegion(canvas, tx, ty, side, side, raw);
+  const key = fw + 'x' + fh;
+  if (key !== tilesKey) { tiles = buildTiles(fw, fh); tilesKey = key; cursor = 0; cycleStart = performance.now(); }
+  frameNo++;
+  const t0 = performance.now(), raw = [];
+  const rest = tiles.filter((t) => t.level > 0);
+  for (const t of tiles) if (t.level === 0) scanTile(canvas, t, raw);
+  let active = 0;
+  for (const t of rest) if (t.hit && active < MAX_ACTIVE) { scanTile(canvas, t, raw); active++; }
+  for (let n = 0; n < rest.length && (n < MIN_ROTATE || performance.now() - t0 < BUDGET_MS); n++) {
+    const t = rest[cursor];
+    cursor = (cursor + 1) % rest.length;
+    if (cursor === 0) { cycleMs = performance.now() - cycleStart; cycleStart = performance.now(); }
+    if (t.frame !== frameNo) scanTile(canvas, t, raw);
   }
-  // Lo stesso volto può essere trovato in più riquadri: si uniscono i rettangoli sovrapposti.
-  const merged = [];
-  for (const b of raw) {
-    const m = merged.find((o) => iou(o, b) > 0.3 || contains(o, b) || contains(b, o));
-    if (m) { m.l = Math.min(m.l, b.l); m.t = Math.min(m.t, b.t); m.r = Math.max(m.r, b.r); m.b = Math.max(m.b, b.b); }
-    else merged.push({ ...b });
-  }
-  return merged;
+  // Un volto non riesaminato in questo fotogramma resta coperto finché il suo
+  // riquadro non torna di turno: la tenuta si adatta alla durata della rotazione.
+  holdMs = Math.max(HOLD_MS, cycleMs * 1.5);
+  // Lo stesso volto può comparire in più riquadri: si tiene il rettangolo più grande.
+  raw.sort((p, q) => W(q) * H(q) - W(p) * H(p));
+  const kept = [];
+  for (const b of raw) if (!kept.some((o) => iou(o, b) > 0.3 || contains(o, b))) kept.push(b);
+  return kept;
 }
 
 // ---------- fotocamera ----------
@@ -162,6 +188,9 @@ let pool = [], rot = 0, lastFast = -1e9, hasGyro = false;
 const stats = { fps: 0, detect: 0, faces: 0, full: 0, frames: 0, shown: 0, errors: 0, last: 0 };
 window.__stats = stats;
 window.__lastDets = [];
+window.__cycle = () => ({ tiles: tiles.length, cycleMs });
+// Verifica: cerca volti nell'immagine già mascherata (deve trovarne zero).
+window.__leakCheck = () => (view.width ? detectAll(view, view.width, view.height).length : 0);
 
 async function openCamera() {
   if (stream) stream.getTracks().forEach((t) => t.stop());
@@ -230,7 +259,8 @@ function processFrame() {
       `Rilevamento ${stats.detect.toFixed(0)} ms\nVolti ${stats.faces}, errori ${stats.errors}\n` +
       `Giroscopio ${hasGyro ? rot.toFixed(0) + ' gradi/s' : 'non disponibile'}\n` +
       `Protezione movimento: ${moving ? 'ATTIVA' : 'no'} (${stats.full} coperti)\n` +
-      `Ritardo anteprima: ${LOOKAHEAD} fotogrammi`;
+      `Ritardo anteprima: ${LOOKAHEAD} fotogrammi\n` +
+      `Riquadri ${tiles.length}, giro completo ${cycleMs.toFixed(0)} ms`;
   }
 }
 function schedule() {
@@ -261,6 +291,7 @@ $('go').addEventListener('click', async () => {
       baseOptions: { modelAssetPath: './vendor/blaze_face_short_range.tflite', delegate: 'CPU' },
       runningMode: 'IMAGE',
       minDetectionConfidence: 0.5,
+      minSuppressionThreshold: 0.3,
     });
     await openCamera();
     $('start').style.display = 'none';
