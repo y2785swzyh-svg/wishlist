@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="robots" content="noindex, nofollow">
+<title>FaceMask – dimostratore</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; color: #fff; overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  #view { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  #view.mirror { transform: scaleX(-1); }
+  /* Il video in chiaro non viene mai mostrato: resta invisibile e serve solo da sorgente. */
+  #cam { position: fixed; width: 2px; height: 2px; opacity: 0; pointer-events: none; }
+  #start { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 32px; text-align: center; background: #111; z-index: 5; }
+  #start h1 { font-size: 26px; margin: 0 0 12px; }
+  #start p { max-width: 420px; line-height: 1.45; color: #ccc; margin: 0 0 14px; font-size: 15px; }
+  #go { margin-top: 10px; padding: 16px 40px; font-size: 18px; font-weight: 600; border: 0;
+    border-radius: 999px; background: #fff; color: #000; }
+  #err { color: #ff8a80; min-height: 1.4em; }
+  #hud { position: fixed; left: 12px; top: calc(12px + env(safe-area-inset-top)); padding: 8px 10px;
+    background: rgba(0,0,0,.6); font: 12px/1.4 ui-monospace, Menlo, monospace; white-space: pre;
+    border-radius: 6px; display: none; z-index: 3; }
+  .round { position: fixed; border: 0; border-radius: 50%; background: rgba(0,0,0,.5); color: #fff;
+    display: flex; align-items: center; justify-content: center; z-index: 3; padding: 0; }
+  #info { right: 12px; top: calc(12px + env(safe-area-inset-top)); width: 40px; height: 40px;
+    font-size: 18px; font-weight: 700; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; height: calc(150px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(0,0,0,.7), rgba(0,0,0,0)); z-index: 2; pointer-events: none; }
+  #shot { position: fixed; left: 50%; bottom: calc(30px + env(safe-area-inset-bottom)); width: 78px;
+    height: 78px; margin-left: -39px; border-radius: 50%; border: 4px solid #fff; background: transparent;
+    padding: 0; z-index: 3; }
+  #shot::after { content: ""; position: absolute; inset: 5px; border-radius: 50%; background: #fff;
+    transition: transform .08s; }
+  #shot:active::after { transform: scale(.86); }
+  #switch { right: 40px; bottom: calc(43px + env(safe-area-inset-bottom)); width: 52px; height: 52px; }
+  #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;
+    transition: opacity .25s; }
+  .ui { display: none; }
+</style>
+</head>
+<body>
+<video id="cam" playsinline muted autoplay></video>
+<canvas id="view"></canvas>
+<div id="flash"></div>
+
+<div id="start">
+  <h1>FaceMask</h1>
+  <p>Dimostratore: la fotocamera sfoca in diretta tutti i volti. L'elaborazione avviene
+     interamente su questo dispositivo, nessuna immagine viene inviata in rete.</p>
+  <p>È una versione di prova nel browser, meno veloce e meno affidabile dell'app.</p>
+  <p id="err"></p>
+  <button id="go">Avvia la fotocamera</button>
+</div>
+
+<div id="hud"></div>
+<button id="info" class="round ui" aria-label="Mostra o nascondi i dati tecnici">i</button>
+<div id="bar" class="ui"></div>
+<button id="shot" class="ui" aria-label="Scatta una foto"></button>
+<button id="switch" class="round ui" aria-label="Cambia fotocamera">
+  <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8A5.87 5.87 0 0 1 6 12c0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
+</button>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
