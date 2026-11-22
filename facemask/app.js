@@ -255,7 +255,7 @@ function processFrame() {
   stats.faces = dets ? dets.length : 0;
   if (++stats.frames % 5 === 0 && hud.style.display === 'block') {
     hud.textContent =
-      `Versione 4 – risoluzione ${fw}x${fh}\nFluidità ${stats.fps.toFixed(1)} fotogrammi/s\n` +
+      `Versione 5 – risoluzione ${fw}x${fh}\nFluidità ${stats.fps.toFixed(1)} fotogrammi/s\n` +
       `Rilevamento ${stats.detect.toFixed(0)} ms\nVolti ${stats.faces}, errori ${stats.errors}\n` +
       `Giroscopio ${hasGyro ? rot.toFixed(0) + ' gradi/s' : 'non disponibile'}\n` +
       `Protezione movimento: ${moving ? 'ATTIVA' : 'no'} (${stats.full} coperti)\n` +
@@ -314,24 +314,40 @@ $('switch').addEventListener('click', async () => {
   try { await openCamera(); } catch (e) { front = !front; console.error(e); }
 });
 
+// Una pagina web non può scrivere direttamente nella galleria del telefono.
+// Dopo lo scatto si mostra quindi la foto con due vie per salvarla: il pulsante
+// "Salva o condividi" (pannello di sistema) oppure la pressione prolungata sull'immagine.
+let shotBlob = null, shotUrl = null;
 $('shot').addEventListener('click', () => {
   if (!stats.shown) return;
   const flash = $('flash');
   flash.style.transition = 'none'; flash.style.opacity = '0.7';
   requestAnimationFrame(() => { flash.style.transition = 'opacity .25s'; flash.style.opacity = '0'; });
   // La foto è presa dall'immagine a schermo, quindi è già mascherata.
-  view.toBlob(async (blob) => {
+  view.toBlob((blob) => {
     if (!blob) return;
-    const file = new File([blob], `facemask_${Date.now()}.jpg`, { type: 'image/jpeg' });
-    try {
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file] });
-        return;
-      }
-    } catch (e) { if (e && e.name === 'AbortError') return; }
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = file.name;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    if (shotUrl) URL.revokeObjectURL(shotUrl);
+    shotBlob = blob; shotUrl = URL.createObjectURL(blob);
+    $('shotImg').src = shotUrl;
+    $('shotMsg').textContent = '';
+    $('review').style.display = 'flex';
   }, 'image/jpeg', 0.92);
+});
+$('shotClose').addEventListener('click', () => { $('review').style.display = 'none'; });
+$('shotSave').addEventListener('click', async () => {
+  if (!shotBlob) return;
+  const file = new File([shotBlob], `facemask_${Date.now()}.jpg`, { type: 'image/jpeg' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file] });
+      return;
+    }
+  } catch (e) {
+    if (e && e.name === 'AbortError') return;
+  }
+  // Senza pannello di condivisione: scaricamento, più l'indicazione alternativa.
+  const a = document.createElement('a');
+  a.href = shotUrl; a.download = file.name;
+  document.body.appendChild(a); a.click(); a.remove();
+  $('shotMsg').textContent = 'Se la foto non compare, tieni premuto sull\'immagine e scegli "Salva in Foto".';
 });

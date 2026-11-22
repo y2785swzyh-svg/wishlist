@@ -39,6 +39,17 @@
   #flash { position: fixed; inset: 0; background: #fff; opacity: 0; pointer-events: none; z-index: 4;
     transition: opacity .25s; }
   .ui { display: none; }
+  #review { position: fixed; inset: 0; z-index: 6; background: rgba(0,0,0,.94); display: none;
+    flex-direction: column; align-items: center; justify-content: center;
+    padding: calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom)); }
+  #shotImg { max-width: 100%; max-height: 62vh; border-radius: 10px;
+    -webkit-user-select: auto; user-select: auto; -webkit-touch-callout: default; }
+  #review p { color: #ccc; font-size: 14px; line-height: 1.4; text-align: center; max-width: 420px; margin: 14px 0 0; }
+  #shotMsg { color: #ffd180 !important; min-height: 1.4em; }
+  #review .row { display: flex; gap: 12px; margin-top: 16px; }
+  #review button { padding: 14px 22px; font-size: 16px; font-weight: 600; border: 0; border-radius: 999px; }
+  #shotSave { background: #fff; color: #000; }
+  #shotClose { background: #333; color: #fff; }
 </style>
 </head>
 <body>
@@ -48,12 +59,23 @@
 
 <div id="start">
   <h1>FaceMask</h1>
-  <p style="color:#888;font-size:12px;margin-top:-6px">versione 4</p>
+  <p style="color:#888;font-size:12px;margin-top:-6px">versione 5</p>
   <p>Dimostratore: la fotocamera sfoca in diretta tutti i volti. L'elaborazione avviene
      interamente su questo dispositivo, nessuna immagine viene inviata in rete.</p>
   <p>È una versione di prova nel browser, meno veloce e meno affidabile dell'app.</p>
   <p id="err"></p>
   <button id="go">Avvia la fotocamera</button>
+</div>
+
+<div id="review">
+  <img id="shotImg" alt="Foto scattata, con i volti mascherati">
+  <p>Per metterla nella galleria: tocca "Salva o condividi" e scegli "Salva immagine",
+     oppure tieni premuto sull'immagine.</p>
+  <p id="shotMsg"></p>
+  <div class="row">
+    <button id="shotSave">Salva o condividi</button>
+    <button id="shotClose">Chiudi</button>
+  </div>
 </div>
 
 <div id="hud"></div>
@@ -64,6 +86,6 @@
   <svg width="26" height="26" viewBox="0 0 24 24" fill="#fff"><path d="M12 6v3l4-4-4-4v3c-4.42 0-8 3.58-8 8 0 1.57.46 3.03 1.24 4.26L6.7 14.8A5.87 5.87 0 0 1 6 12c0-3.31 2.69-6 6-6zm6.76 1.74L17.3 9.2c.44.84.7 1.79.7 2.8 0 3.31-2.69 6-6 6v-3l-4 4 4 4v-3c4.42 0 8-3.58 8-8 0-1.57-.46-3.03-1.24-4.26z"/></svg>
 </button>
 
-<script type="module" src="app.js?v=4"></script>
+<script type="module" src="app.js?v=5"></script>
 </body>
 </html>
